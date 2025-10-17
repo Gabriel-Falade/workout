@@ -24,8 +24,15 @@ from analysis.frame_metrics import compute_frame_metrics, FrameMetricsState
 # Import all exercise detectors
 from exercises.pushup import PushUpDetector
 from exercises.jumping_jacks import JumpingJacksDetector
-# from exercises.squat import SquatDetector  # Uncomment when implemented
-# from exercises.burpee import BurpeeDetector  # Uncomment when implemented
+from exercises.squat import SquatDetector
+from exercises.burpee import BurpeeDetector
+from exercises.donkey_kicks import DonkeyKicksDetector
+from exercises.glute_bridge import GluteBridgeDetector
+from exercises.high_knees import HighKneesCounter
+from exercises.jump_squat import JumpSquatDetector
+from exercises.lunge import LungeDetector
+from exercises.plank import PlankMonitor
+from exercises.situp import SitupDetector
 
 # ------------------------------
 # Exercise Configuration
@@ -39,6 +46,17 @@ AVAILABLE_EXERCISES = {
         "metrics": ["ROM", "Velocity", "Torso Tilt"],
         "rom_key": "rom_pushup_smooth",
         "vel_key": "vel_pushup",
+        "requires_lm": False,
+    },
+    "squat": {
+        "name": "Squats",
+        "icon": "🦵",
+        "detector_class": SquatDetector,
+        "description": "Tracks squat depth and form with knee valgus detection",
+        "metrics": ["ROM", "Velocity", "Knee Valgus"],
+        "rom_key": "rom_squat_smooth",
+        "vel_key": "vel_squat",
+        "requires_lm": False,
     },
     "jumping_jacks": {
         "name": "Jumping Jacks",
@@ -46,19 +64,90 @@ AVAILABLE_EXERCISES = {
         "detector_class": JumpingJacksDetector,
         "description": "Tracks jumping jacks based on arm and leg position",
         "metrics": ["ROM", "Arms Position", "Feet Position"],
-        "rom_key": "rom_pushup_smooth",  # JJ uses custom ROM calculation
+        "rom_key": "rom_pushup_smooth",
         "vel_key": None,
+        "requires_lm": True,
     },
-    # Add more exercises as you implement them
-    # "squat": {
-    #     "name": "Squats",
-    #     "icon": "🦵",
-    #     "detector_class": SquatDetector,
-    #     "description": "Tracks squat depth and form",
-    #     "metrics": ["ROM", "Velocity", "Knee Valgus"],
-    #     "rom_key": "rom_squat_smooth",
-    #     "vel_key": "vel_squat",
-    # },
+    "lunge": {
+        "name": "Lunges",
+        "icon": "🚶",
+        "detector_class": LungeDetector,
+        "description": "Tracks lunge depth with balance and form checks",
+        "metrics": ["ROM", "Velocity", "Balance"],
+        "rom_key": "rom_squat_smooth",
+        "vel_key": "vel_squat",
+        "requires_lm": False,
+    },
+    "burpee": {
+        "name": "Burpees",
+        "icon": "🔥",
+        "detector_class": BurpeeDetector,
+        "description": "Full-body exercise with squat, push-up, and jump detection",
+        "metrics": ["Squat Depth", "Push-up Depth", "Jump Height"],
+        "rom_key": "rom_squat_smooth",
+        "vel_key": "vel_squat",
+        "requires_lm": True,
+    },
+    "situp": {
+        "name": "Sit-ups",
+        "icon": "🧘",
+        "detector_class": SitupDetector,
+        "description": "Core exercise tracking hip flexion ROM",
+        "metrics": ["ROM", "Velocity", "Form"],
+        "rom_key": "rom_squat_smooth",
+        "vel_key": "vel_squat",
+        "requires_lm": False,
+    },
+    "plank": {
+        "name": "Plank Hold",
+        "icon": "🪵",
+        "detector_class": PlankMonitor,
+        "description": "Isometric core hold with form monitoring",
+        "metrics": ["Hold Time", "Form Quality", "Torso Alignment"],
+        "rom_key": None,
+        "vel_key": None,
+        "requires_lm": False,
+    },
+    "glute_bridge": {
+        "name": "Glute Bridges",
+        "icon": "🍑",
+        "detector_class": GluteBridgeDetector,
+        "description": "Hip extension exercise for glute activation",
+        "metrics": ["ROM", "Hip Extension", "Form"],
+        "rom_key": "rom_squat_smooth",
+        "vel_key": "vel_squat",
+        "requires_lm": False,
+    },
+    "donkey_kicks": {
+        "name": "Donkey Kicks",
+        "icon": "🦵",
+        "detector_class": DonkeyKicksDetector,
+        "description": "Single-leg glute activation exercise",
+        "metrics": ["Leg Height", "ROM", "Form"],
+        "rom_key": None,
+        "vel_key": None,
+        "requires_lm": True,
+    },
+    "jump_squat": {
+        "name": "Jump Squats",
+        "icon": "⚡",
+        "detector_class": JumpSquatDetector,
+        "description": "Explosive squat with jump detection",
+        "metrics": ["Squat Depth", "Jump Height", "Landing Form"],
+        "rom_key": "rom_squat_smooth",
+        "vel_key": "vel_squat",
+        "requires_lm": True,
+    },
+    "high_knees": {
+        "name": "High Knees",
+        "icon": "🏃",
+        "detector_class": HighKneesCounter,
+        "description": "Cardio exercise counting alternating knee raises",
+        "metrics": ["Knee Height", "Cadence", "Form"],
+        "rom_key": None,
+        "vel_key": None,
+        "requires_lm": True,
+    },
 }
 
 # ------------------------------
@@ -165,13 +254,11 @@ class WorkoutProcessor:
         # Compute metrics
         fm = compute_frame_metrics(lm, dt, self.fm_state)
         
-        # Update detector - handle different detector signatures
-        try:
-            # Try push-up style (fm only)
-            rep_event, live = self.detector.update(fm, now_s=now)
-        except TypeError:
-            # Try jumping jacks style (fm and lm)
+        # Update detector based on whether it needs landmarks
+        if self.exercise_config["requires_lm"]:
             rep_event, live = self.detector.update(fm, lm, now_s=now)
+        else:
+            rep_event, live = self.detector.update(fm, now_s=now)
         
         # Draw skeleton
         if results.pose_landmarks:
@@ -191,24 +278,37 @@ class WorkoutProcessor:
         cv.putText(image, 'REPS', (15, 14), cv.FONT_HERSHEY_COMPLEX, 0.5, (0, 0, 0), 1, cv.LINE_AA)
         cv.putText(image, str(live.get("rep_count", 0)), (10, 62), cv.FONT_HERSHEY_COMPLEX, 2, (255, 255, 255), 2, cv.LINE_AA)
         cv.putText(image, 'STAGE', (88, 14), cv.FONT_HERSHEY_COMPLEX, 0.5, (0, 0, 0), 1, cv.LINE_AA)
-        cv.putText(image, str(live.get("stage", "") or "--"), (80, 62), cv.FONT_HERSHEY_COMPLEX, 2, (255, 255, 255), 2, cv.LINE_AA)
+        
+        # Special handling for plank (shows hold time instead of stage)
+        if self.exercise_key == "plank":
+            held_s = live.get("held_s", 0.0) or 0.0
+            cv.putText(image, f"{held_s:.1f}s", (80, 62), cv.FONT_HERSHEY_COMPLEX, 1.5, (255, 255, 255), 2, cv.LINE_AA)
+        else:
+            cv.putText(image, str(live.get("stage", "") or "--"), (80, 62), cv.FONT_HERSHEY_COMPLEX, 2, (255, 255, 255), 2, cv.LINE_AA)
         
         # Bottom-right: calculations
         rom_key = self.exercise_config["rom_key"]
         vel_key = self.exercise_config["vel_key"]
         
-        rom = live.get("rom") or fm.get(rom_key)
+        rom = live.get("rom") or (fm.get(rom_key) if rom_key else None)
         vel = live.get("vel") or (fm.get(vel_key) if vel_key else None)
         tilt = fm.get("torso_tilt_deg")
         
-        info_lines = [
-            f"ROM:  {rom:5.1f} %" if rom is not None else "ROM:  --",
-            f"Vel:  {vel:5.1f} %/s" if vel is not None else "Vel:  --" if vel_key else "",
-            f"Tilt: {tilt:4.1f} deg" if tilt is not None else "Tilt: --",
-            f"FPS:  {self.fps_ema:4.1f}" if self.fps_ema is not None else "FPS:  --",
-            f"Mode: {self.exercise_config['name']}",
-        ]
-        info_lines = [line for line in info_lines if line]  # Remove empty lines
+        info_lines = []
+        if self.exercise_key == "plank":
+            held_s = live.get("held_s", 0.0) or 0.0
+            info_lines.append(f"Hold: {held_s:5.1f}s")
+        else:
+            if rom is not None:
+                info_lines.append(f"ROM:  {rom:5.1f} %")
+            if vel is not None and vel_key:
+                info_lines.append(f"Vel:  {vel:5.1f} %/s")
+        
+        if tilt is not None:
+            info_lines.append(f"Tilt: {tilt:4.1f} deg")
+        info_lines.append(f"FPS:  {self.fps_ema:4.1f}" if self.fps_ema is not None else "FPS:  --")
+        info_lines.append(f"Mode: {self.exercise_config['name']}")
+        
         image = draw_info_box(image, info_lines)
         
         return image, live, rep_event
@@ -255,7 +355,7 @@ def process_video(video_path, exercise_key, st_video_placeholder, st_info_placeh
         info_text = f"""
         **Current Stage**: {live.get("stage", "--")}  
         **Total Reps**: {live.get("rep_count", 0)}  
-        **ROM**: {rom:.1f}%
+        **ROM**: {rom:.1f}% if rom else "--"}
         """
         st_info_placeholder.markdown(info_text)
         
@@ -374,21 +474,32 @@ def main():
             # Update stats display
             if 'live_stats' in st.session_state:
                 live = st.session_state.live_stats
-                stats_placeholder.markdown(f"""
-                ### Current Workout Stats
                 
-                - **Exercise**: {exercise_config['icon']} {exercise_config['name']}
-                - **Stage**: {live.get('stage', '--')}
-                - **Rep Count**: {live.get('rep_count', 0)}
-                - **ROM**: {live.get('rom', 0.0):.1f}%
-                """)
+                if selected_exercise == "plank":
+                    stats_placeholder.markdown(f"""
+                    ### Current Workout Stats
+                    
+                    - **Exercise**: {exercise_config['icon']} {exercise_config['name']}
+                    - **Hold Time**: {live.get('held_s', 0.0):.1f}s
+                    - **Status**: {'✅ Good Form' if live.get('hold_ok') else '⚠️ Form Issue'}
+                    """)
+                else:
+                    stats_placeholder.markdown(f"""
+                    ### Current Workout Stats
+                    
+                    - **Exercise**: {exercise_config['icon']} {exercise_config['name']}
+                    - **Stage**: {live.get('stage', '--')}
+                    - **Rep Count**: {live.get('rep_count', 0)}
+                    - **ROM**: {live.get('rom', 0.0):.1f}%
+                    """)
                 
                 # Show recent rep events
                 if 'rep_events' in st.session_state and st.session_state.rep_events:
                     st.markdown("### 📝 Recent Reps")
                     for event in st.session_state.rep_events[-5:]:  # Last 5 reps
                         color = "🟢" if event.get("counted") else "🔴"
-                        st.write(f"{color} {event.get('class', 'N/A')}: {', '.join(event.get('cues', ['Good form!']))}")
+                        cues = event.get('cues', ['Good form!'])
+                        st.write(f"{color} {event.get('class', 'N/A')}: {', '.join(cues) if cues else 'Good form!'}")
             else:
                 stats_placeholder.info("Waiting for video stream...")
         
