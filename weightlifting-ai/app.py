@@ -202,7 +202,7 @@ class WorkoutProcessor:
         self.mp_pose = mp.solutions.pose
         self.mp_drawing = mp.solutions.drawing_utils
         self.pose = self.mp_pose.Pose(
-            model_complexity=0,  # <-- FIX: Use the fastest model for real-time webcam stream
+            model_complexity=0,  # FIX: Use the fastest model for real-time webcam stream
             min_detection_confidence=0.5,
             min_tracking_confidence=0.5
         )
@@ -463,7 +463,14 @@ def main():
                 mode=WebRtcMode.SENDRECV,
                 rtc_configuration=RTC_CONFIGURATION,
                 video_frame_callback=video_frame_callback,
-                media_stream_constraints={"video": True, "audio": False},
+                # FIX: Request a low-resolution stream to prevent processing from stalling the feed
+                media_stream_constraints={
+                    "video": {
+                        "width": {"max": 320}, 
+                        "height": {"max": 240}
+                    }, 
+                    "audio": False
+                },
                 async_processing=True,
             )
         
