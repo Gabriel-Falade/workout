@@ -1,4 +1,4 @@
-# app.py
+# app.py - FIXED VERSION
 
 import os
 import sys
@@ -189,17 +189,6 @@ def draw_info_box(img, lines: List[str], padding=10, line_height=22):
         y += line_height
     return img
 
-def class_to_color(rep_class: str):
-    """Map rep classification to a BGR color."""
-    if not rep_class:
-        return (60, 180, 75)  # green
-    rc_lower = rep_class.lower()
-    if "fail" in rc_lower:
-        return (40, 40, 220)  # red
-    if "warn" in rc_lower:
-        return (0, 215, 255)  # yellow
-    return (60, 180, 75)  # green
-
 # ------------------------------
 # Workout Processor Class
 # ------------------------------
@@ -284,7 +273,8 @@ class WorkoutProcessor:
             held_s = live.get("held_s", 0.0) or 0.0
             cv.putText(image, f"{held_s:.1f}s", (80, 62), cv.FONT_HERSHEY_COMPLEX, 1.5, (255, 255, 255), 2, cv.LINE_AA)
         else:
-            cv.putText(image, str(live.get("stage", "") or "--"), (80, 62), cv.FONT_HERSHEY_COMPLEX, 2, (255, 255, 255), 2, cv.LINE_AA)
+            stage_text = str(live.get("stage", "") or "--")
+            cv.putText(image, stage_text, (80, 62), cv.FONT_HERSHEY_COMPLEX, 2, (255, 255, 255), 2, cv.LINE_AA)
         
         # Bottom-right: calculations
         rom_key = self.exercise_config["rom_key"]
@@ -337,7 +327,7 @@ def process_video(video_path, exercise_key, st_video_placeholder, st_info_placeh
             break
 
         frame_count += 1
-        progress = frame_count / total_frames
+        progress = frame_count / total_frames if total_frames > 0 else 0
         st_progress_bar.progress(progress)
 
         # Process frame
@@ -348,7 +338,7 @@ def process_video(video_path, exercise_key, st_video_placeholder, st_info_placeh
         
         # Convert to RGB for Streamlit
         display_frame = cv.cvtColor(processed_frame, cv.COLOR_BGR2RGB)
-        st_video_placeholder.image(display_frame, channels="RGB", use_column_width=True)
+        st_video_placeholder.image(display_frame, channels="RGB", use_container_width=True)
 
         # Display stats
         rom = live.get("rom", 0.0)
@@ -383,10 +373,14 @@ def video_frame_callback(frame):
     # Get selected exercise from session state
     exercise_key = st.session_state.get('selected_exercise', 'push_up')
     
-    # Initialize or update processor if exercise changed
+    # Initialize processor if needed
     if 'processor' not in st.session_state or st.session_state.get('last_exercise') != exercise_key:
         st.session_state.processor = WorkoutProcessor(exercise_key)
         st.session_state.last_exercise = exercise_key
+    
+    # Initialize rep_events list if needed
+    if 'rep_events' not in st.session_state:
+        st.session_state.rep_events = []
     
     # Process the frame
     processed_img, live, rep_event = st.session_state.processor.process_frame(img)
@@ -394,8 +388,6 @@ def video_frame_callback(frame):
     # Store live stats and events
     st.session_state.live_stats = live
     if rep_event:
-        if 'rep_events' not in st.session_state:
-            st.session_state.rep_events = []
         st.session_state.rep_events.append(rep_event)
     
     return av.VideoFrame.from_ndarray(processed_img, format="bgr24")
@@ -406,6 +398,14 @@ def video_frame_callback(frame):
 def main():
     st.set_page_config(layout="wide", page_title="AI Workout Analyzer")
     st.title("🏋️ AI-Powered Workout App")
+    
+    # Initialize session state variables
+    if 'selected_exercise' not in st.session_state:
+        st.session_state.selected_exercise = 'push_up'
+    if 'rep_events' not in st.session_state:
+        st.session_state.rep_events = []
+    if 'live_stats' not in st.session_state:
+        st.session_state.live_stats = {}
     
     # Sidebar
     st.sidebar.header("⚙️ Settings")
@@ -421,24 +421,23 @@ def main():
     selected_exercise_display = st.sidebar.selectbox(
         "Choose your workout:",
         options=list(exercise_options.values()),
-        index=0
+        index=list(exercise_options.keys()).index(st.session_state.selected_exercise)
     )
     
     # Get the exercise key from display name
     selected_exercise = [k for k, v in exercise_options.items() if v == selected_exercise_display][0]
     
-    # Store in session state
-    if 'selected_exercise' not in st.session_state:
+    # Update if changed
+    if st.session_state.selected_exercise != selected_exercise:
         st.session_state.selected_exercise = selected_exercise
-    else:
-        # Update if changed
-        if st.session_state.selected_exercise != selected_exercise:
-            st.session_state.selected_exercise = selected_exercise
-            # Clear previous workout data
-            if 'rep_events' in st.session_state:
-                del st.session_state.rep_events
-            if 'live_stats' in st.session_state:
-                del st.session_state.live_stats
+        # Clear previous workout data
+        st.session_state.rep_events = []
+        st.session_state.live_stats = {}
+        # Force processor recreation
+        if 'processor' in st.session_state:
+            del st.session_state.processor
+        if 'last_exercise' in st.session_state:
+            del st.session_state.last_exercise
     
     # Display exercise info
     exercise_config = AVAILABLE_EXERCISES[selected_exercise]
@@ -472,7 +471,7 @@ def main():
             stats_placeholder = st.empty()
             
             # Update stats display
-            if 'live_stats' in st.session_state:
+            if st.session_state.live_stats:
                 live = st.session_state.live_stats
                 
                 if selected_exercise == "plank":
@@ -494,7 +493,7 @@ def main():
                     """)
                 
                 # Show recent rep events
-                if 'rep_events' in st.session_state and st.session_state.rep_events:
+                if st.session_state.rep_events:
                     st.markdown("### 📝 Recent Reps")
                     for event in st.session_state.rep_events[-5:]:  # Last 5 reps
                         color = "🟢" if event.get("counted") else "🔴"
