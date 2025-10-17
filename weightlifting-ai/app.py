@@ -469,7 +469,7 @@ def main():
                         "width": {"max": 320}, 
                         "height": {"max": 240}
                     }, 
-                    "audio": False
+                        "audio": False
                 },
                 async_processing=True,
             )
@@ -571,3 +571,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
