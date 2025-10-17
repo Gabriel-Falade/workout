@@ -5,5 +5,3 @@ libgl1-mesa-glx
 libglib2.0-0
 libxrender1
 libgomp1
-libavformat58
-libavcodec58
