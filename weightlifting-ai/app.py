@@ -355,7 +355,7 @@ def process_video(video_path, exercise_key, st_video_placeholder, st_info_placeh
         info_text = f"""
         **Current Stage**: {live.get("stage", "--")}  
         **Total Reps**: {live.get("rep_count", 0)}  
-        **ROM**: {rom:.1f}% if rom else "--"}
+        **ROM**: {f"{rom:.1f}%" if rom else "--"}
         """
         st_info_placeholder.markdown(info_text)
         
