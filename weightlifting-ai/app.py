@@ -202,6 +202,7 @@ class WorkoutProcessor:
         self.mp_pose = mp.solutions.pose
         self.mp_drawing = mp.solutions.drawing_utils
         self.pose = self.mp_pose.Pose(
+            model_complexity=0,  # <-- FIX: Use the fastest model for real-time webcam stream
             min_detection_confidence=0.5,
             min_tracking_confidence=0.5
         )
